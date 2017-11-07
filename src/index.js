@@ -6,8 +6,11 @@ const { PREFIX, OWNER, TOKEN } = require("../config");
 
 const client = new Discord.Client({
   disableEveryone: true,
-  prefix: PREFIX,
-  owner: OWNER
+  owner: OWNER,
+  presence: {
+    name: `-help`,
+    type: 0
+  }
 });
 
 const loadCommands = Client => { // eslint-disable-line arrow-body-style
@@ -42,9 +45,10 @@ const loadCommands = Client => { // eslint-disable-line arrow-body-style
 loadCommands(client)
   .catch(err => winston.error(`Failed to load commands: ${err}`));
 
+let prefix;
 client.on("ready", () => {
   winston.info("[DISCORD]: Ready");
-  console.log(client.commandPrefix); // eslint-disable-line no-console
+  prefix = new RegExp(`^(<@!?${client.user.id}>|${PREFIX}?)`, "i");
 })
   .on("error", err => {
     winston.error(`[DISCORD]: ${err.stack}`);
@@ -52,23 +56,38 @@ client.on("ready", () => {
   .on("warn", info => {
     winston.warn(`[DISCORD]: ${info}`);
   })
-  .on("commandRun", (cmd, msg, args) => {
-    winston.info(
-      oneLine`[DISCORD] 
-      >> Command run: ${cmd} 
-      >> Guild: ${msg.guild} 
-      >> Message author: ${msg.author.tag} 
-      >> Arguments: ${args.join(", ")}
-      >> Content: ${msg.content.slice(client.commandPrefix.length).toLowerCase()}`);
-  })
-  .on("commandError", (err, cmd) => {
-    winston.error(stripIndents`
-      [DISCORD] Error in command ${cmd}: 
-      ${err.stack}
-    `);
-  })
-  .on("unknownCommand", (command, message) => {
-    winston.warn(`[DISCORD] Unknown command ${command} in message ${message.content}`);
+  .on("message", async msg => {
+    // Check if command starts with prefix and is not run by a bot
+    if (msg.author.bot || !prefix || !prefix.test(msg.content)) return;
+
+    // Get command and arguments
+    let [command, ...args] = msg.content.replace(prefix, "").trim().split(" ");
+
+    // Check if the command exists in the commands collection
+    let cmd;
+    if (client.commands.has(command)) {
+      cmd = client.commands.get(command);
+    } else if (client.aliases.has(command)) {
+      cmd = client.commands.get(client.client.aliases.get(command));
+    }
+    if (cmd) {
+      try {
+        await cmd.run(msg, args);
+        winston.info(oneLine`
+        [DISCORD]: Command run: ${cmd} 
+          >> Guild: ${msg.guild} 
+          >> Message author: ${msg.author.tag} 
+          >> Arguments: ${args.join(", ")}
+          >> Content: ${msg.content.replace(prefix, "").trim().toLowerCase()}
+        `);
+      } catch (error) {
+        winston.error(stripIndents`
+          [DISCORD] Error in command ${cmd}: 
+          ${error.stack}
+        `);
+        msg.reply(`an error occurred while running the command, which you should never receive: \`${error.message}\``);
+      }
+    }
   });
 
 client.login(TOKEN)
