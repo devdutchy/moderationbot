@@ -17,7 +17,7 @@ module.exports = class GuildSetupCommand extends Command {
     }
     // Check if arguments are provided
     if (!args.length) {
-      return msg.reply("you have not specified one of the following options: `modrole`,`modlog`,`mute`,`joinmessage`,`leavemessage`,`joinrole`");
+      return msg.reply("you have not specified one of the following options: `modrole`,`modlog`,`mute`,`joinrole`");
     }
     // Get the option from the arguments
     let option = args[0];
@@ -27,6 +27,7 @@ module.exports = class GuildSetupCommand extends Command {
     // Setup for modrole
     if (option === "modrole") {
       if (!key.length) return msg.reply("you did not specify a role.");
+      if (!this.validate(key[0], "role", msg)) return msg.reply("you provided an invalid role.");
       const modroleExists = await GuildModel.findOne({ where: { guild: msg.guild.id } });
       if (msg.mentions.roles && modroleExists) {
         const updatedRows = await GuildModel.update({ modrole: msg.mentions.roles.first().id }, { where: { guild: msg.guild.id } });
@@ -57,8 +58,9 @@ module.exports = class GuildSetupCommand extends Command {
         }
         return msg.reply("I couldn't enable the modrole.");
       } else if (!modroleExists) {
+        let exists = msg.guild.roles.has(key[0]);
+        if (!exists) return msg.reply("couldn't find a role with that ID.");
         let role = msg.guild.roles.get(key[0]);
-        if (!role) return msg.reply("couldn't find a role with that ID.");
         const updatedRows = await GuildModel.create({
           guild: msg.guild.id,
           modrole: role.id,
@@ -81,6 +83,40 @@ module.exports = class GuildSetupCommand extends Command {
         }
         return msg.reply("I couldn't enable the modrole.");
       }
+    }
+    if (option === "modlog") {
+      if (!this.validate(key[0], "channel", msg)) return msg.reply("you provided an invalid channel.");
+    }
+    if (option === "mute") {
+      
+    }
+    if (option === "joinrole") {
+      
+    }
+    
+    return null;
+  }
+  async validate(value, type, msg) {
+    if (type === "channel") {
+      const matches = value.match(/^(?:<#)?([0-9]+)>?$/);
+      if (matches) return msg.guild.channels.has(matches[1]);
+      return false;
+    }
+    if (type === "member") {
+      const matches = value.match(/^(?:<@!?)?([0-9]+)>?$/);
+      if (matches) {
+        try {
+          return await msg.guild.members.fetch(await msg.client.users.fetch(matches[1]));
+        } catch (err) {
+          return false;
+        }
+      }
+      return false;
+    }
+    if (type === "role") {
+      const matches = value.match(/^(?:<@&)?([0-9]+)>?$/);
+      if (matches) return msg.guild.roles.has(matches[1]);
+      return false;
     }
     return null;
   }
